@@ -1,0 +1,5 @@
+add_executable(03_nrf_probe main.c)
+target_link_libraries(03_nrf_probe pico_stdlib pico_leds_common)
+pico_enable_stdio_usb(03_nrf_probe 1)
+pico_enable_stdio_uart(03_nrf_probe 0)
+pico_add_extra_outputs(03_nrf_probe)

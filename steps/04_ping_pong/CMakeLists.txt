@@ -1,0 +1,5 @@
+add_executable(04_ping_pong main.c)
+target_link_libraries(04_ping_pong pico_stdlib pico_leds_common)
+pico_enable_stdio_usb(04_ping_pong 1)
+pico_enable_stdio_uart(04_ping_pong 0)
+pico_add_extra_outputs(04_ping_pong)

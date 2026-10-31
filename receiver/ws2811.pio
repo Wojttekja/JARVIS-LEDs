@@ -1,0 +1,45 @@
+;
+; WS2811 driver, based on the Pico SDK ws2812.pio (BSD-3-Clause, Raspberry Pi Ltd).
+; 10 PIO cycles per bit. At 800 kHz one cycle = 125 ns:
+;   "0" bit: high T1      = 250 ns, low T2+T3 = 1000 ns   (WS2811 spec: 250 / 1000 ns)
+;   "1" bit: high T1+T2   = 625 ns, low T3    =  625 ns   (WS2811 spec: 600 / 650 ns)
+; At 400 kHz (slow mode) every time doubles, which matches the WS2811 low-speed spec.
+;
+.pio_version 0
+
+.program ws2811
+.side_set 1
+
+.define public T1 2
+.define public T2 3
+.define public T3 5
+
+.wrap_target
+bitloop:
+    out x, 1       side 0 [T3 - 1] ; side-set still happens while stalled on an empty FIFO
+    jmp !x do_zero side 1 [T1 - 1] ; rising edge of every bit
+do_one:
+    jmp  bitloop   side 1 [T2 - 1] ; stay high: long pulse
+do_zero:
+    nop            side 0 [T2 - 1] ; go low: short pulse
+.wrap
+
+% c-sdk {
+#include "hardware/clocks.h"
+
+static inline void ws2811_program_init(PIO pio, uint sm, uint offset, uint pin, float freq) {
+    pio_gpio_init(pio, pin);
+    pio_sm_set_consecutive_pindirs(pio, sm, pin, 1, true);
+
+    pio_sm_config c = ws2811_program_get_default_config(offset);
+    sm_config_set_sideset_pins(&c, pin);
+    sm_config_set_out_shift(&c, false, true, 24);  // MSB first, autopull 24 bits
+    sm_config_set_fifo_join(&c, PIO_FIFO_JOIN_TX);
+
+    int cycles_per_bit = ws2811_T1 + ws2811_T2 + ws2811_T3;
+    sm_config_set_clkdiv(&c, clock_get_hz(clk_sys) / (freq * cycles_per_bit));
+
+    pio_sm_init(pio, sm, offset, &c);
+    pio_sm_set_enabled(pio, sm, true);
+}
+%}
