@@ -282,6 +282,9 @@ static void print_status(void) {
         if (last_status.flags & RECEIVER_FLAG_WATCHDOG_RESET) {
             printf("receiver: !! its last boot was a WATCHDOG recovery (it hung once)\n");
         }
+        if (last_status.flags & RECEIVER_FLAG_RADIO_REINIT) {
+            printf("receiver: !! its radio lost its setup since boot and was set up again (power glitch?)\n");
+        }
     } else {
         printf("receiver: no status received yet\n");
     }

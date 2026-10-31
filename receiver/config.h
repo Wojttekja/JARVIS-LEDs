@@ -18,6 +18,8 @@
 #define CROSSFADE_MS    400  // effect / color change blend
 #define SAVE_DELAY_MS   5000 // save state to flash once it's been stable this long
 #define WATCHDOG_MS     1000
+#define RADIO_CHECK_MS   1000  // verify the nRF24 registers this often
+#define RADIO_SILENCE_MS 10000 // no packet this long (remote heartbeats every 2 s) -> set radio up again
 
 // State used on first boot (before anything was saved)
 #define DEFAULT_STATE ((led_state_t){ \

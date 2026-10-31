@@ -1,6 +1,7 @@
 // Receiver firmware: nRF24 -> LED state -> effects -> WS2811 strip.
 // Keeps a fresh receiver_status_t queued so every radio ACK carries it.
-// Onboard LED toggles on every received packet. Serial: 's' prints status.
+// Onboard LED toggles on every received packet. Serial: 's' prints status,
+// 'k' knocks out the radio setup to test the self-repair.
 #include <stdio.h>
 #include <string.h>
 #include "hardware/watchdog.h"
@@ -19,6 +20,8 @@ static led_state_t state;
 static uint16_t last_state_seq;
 static uint32_t packets, heartbeats;
 static uint8_t status_flags;
+static uint32_t radio_reinits;
+static absolute_time_t last_packet_at, next_radio_check;
 
 // Sleep timer
 static uint8_t seen_sleep_id;
@@ -131,14 +134,42 @@ static void poll_radio(void) {
     if (len != sizeof(msg) || msg.version != PROTOCOL_VERSION) {
         printf("ignored packet (len %u, version %u)\n", len, len ? msg.version : 0);
     } else if (msg.type == MSG_STATE) {
+        last_packet_at = get_absolute_time();
         apply_state(&msg.state);
         last_state_seq = msg.seq;
         char prefix[16];
         snprintf(prefix, sizeof(prefix), "#%-5u", msg.seq);
         print_led_state(prefix, &state);
     } else if (msg.type == MSG_GET_STATE) {
+        last_packet_at = get_absolute_time();
         heartbeats++;
     }
+}
+
+static void radio_start(void) {
+    nrf24_setup(LINK_CHANNEL, LINK_ADDR);
+    nrf24_start_listening();
+    last_packet_at = get_absolute_time();
+}
+
+// The radio can lose its setup on a supply glitch while the Pico keeps running
+// (the watchdog can't see that), so check it and set it up again if needed.
+static void check_radio(void) {
+    if (!time_reached(next_radio_check)) return;
+    next_radio_check = make_timeout_time_ms(RADIO_CHECK_MS);
+
+    const char *why;
+    if (!nrf24_config_intact(LINK_CHANNEL)) {
+        why = "registers lost";
+        status_flags |= RECEIVER_FLAG_RADIO_REINIT;
+    } else if (absolute_time_diff_us(last_packet_at, get_absolute_time()) > RADIO_SILENCE_MS * 1000ll) {
+        why = "no packets for a while";  // also happens simply when the remote is unplugged
+    } else {
+        return;
+    }
+    radio_reinits++;
+    printf("radio set up again (%s), #%lu\n", why, (unsigned long)radio_reinits);
+    radio_start();
 }
 
 // --- Rendering ------------------------------------------------------------
@@ -185,9 +216,11 @@ static void render(uint32_t now_ms, uint32_t dt_ms) {
 
 static void print_status(void) {
     print_led_state("state:", &state);
-    printf("uptime %lus, packets %lu (heartbeats %lu), last seq %u, sleep %s",
+    printf("uptime %lus, packets %lu (heartbeats %lu), last seq %u, radio re-setups %lu%s, sleep %s",
            (unsigned long)(to_ms_since_boot(get_absolute_time()) / 1000), (unsigned long)packets,
-           (unsigned long)heartbeats, last_state_seq, sleep_active ? "running" : "off");
+           (unsigned long)heartbeats, last_state_seq, (unsigned long)radio_reinits,
+           (status_flags & RECEIVER_FLAG_RADIO_REINIT) ? " (registers were lost!)" : "",
+           sleep_active ? "running" : "off");
     if (sleep_active) {
         printf(" (%lld s left)", absolute_time_diff_us(get_absolute_time(), sleep_deadline) / 1000000);
     }
@@ -212,8 +245,7 @@ int main(void) {
 
     ws2811_init(STRIP_ORDER, STRIP_SLOW_400KHZ);
     nrf24_init();
-    nrf24_setup(LINK_CHANNEL, LINK_ADDR);
-    nrf24_start_listening();
+    radio_start();
 
     watchdog_enable(WATCHDOG_MS, true);
 
@@ -226,10 +258,13 @@ int main(void) {
     while (true) {
         watchdog_update();
         poll_radio();
+        check_radio();
         check_sleep_timer();
         check_save();
 
-        if (getchar_timeout_us(0) == 's') print_status();
+        int c = getchar_timeout_us(0);
+        if (c == 's') print_status();
+        if (c == 'k') nrf24_write_reg(NRF24_REG_CONFIG, 0);  // simulate a radio glitch (powers it down)
 
         if (time_reached(next_frame)) {
             next_frame = delayed_by_ms(next_frame, FRAME_MS);

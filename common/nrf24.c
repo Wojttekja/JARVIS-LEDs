@@ -139,6 +139,15 @@ void nrf24_setup(uint8_t channel, const uint8_t addr[5]) {
     sleep_ms(5);  // crystal start-up (1.5 ms typ)
 }
 
+bool nrf24_config_intact(uint8_t channel) {
+    uint8_t want_config = CONFIG_EN_CRC | CONFIG_CRCO | CONFIG_PWR_UP;
+    return (nrf24_read_reg(NRF24_REG_CONFIG) & ~CONFIG_PRIM_RX & 0x7F) == want_config &&
+           nrf24_read_reg(NRF24_REG_RF_CH) == (channel & 0x7F) &&
+           (nrf24_read_reg(NRF24_REG_RF_SETUP) & NRF24_RF_DR_LOW) &&
+           nrf24_read_reg(NRF24_REG_FEATURE) == (FEATURE_EN_DPL | FEATURE_EN_ACK_PAY) &&
+           nrf24_read_reg(NRF24_REG_DYNPD) == 0x01;
+}
+
 void nrf24_set_pa_level(uint8_t level) {
     uint8_t rf = nrf24_read_reg(NRF24_REG_RF_SETUP) & ~RF_SETUP_PWR_MASK;
     nrf24_write_reg(NRF24_REG_RF_SETUP, rf | ((level & 0x03) << 1));

@@ -51,6 +51,10 @@ uint8_t nrf24_status(void);  // NOP command, returns STATUS
 // Both sides must use the same channel and 5-byte address.
 void nrf24_setup(uint8_t channel, const uint8_t addr[5]);
 
+// True if the registers still hold what nrf24_setup() wrote. A supply glitch
+// can reset the radio (it then sits powered down) while the Pico runs on.
+bool nrf24_config_intact(uint8_t channel);
+
 // PA level 0..3 = -18, -12, -6, 0 dBm
 void nrf24_set_pa_level(uint8_t level);
 

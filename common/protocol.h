@@ -60,6 +60,7 @@ typedef struct __attribute__((packed)) {
 } remote_msg_t;
 
 #define RECEIVER_FLAG_WATCHDOG_RESET 0x01  // last boot was a watchdog recovery
+#define RECEIVER_FLAG_RADIO_REINIT   0x02  // radio lost its registers since boot and was set up again
 
 // Receiver -> remote (radio ACK payload; reflects the receiver *before* the
 // packet it acknowledges, because it has to be queued in advance)
